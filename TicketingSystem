@@ -1,0 +1,634 @@
+import tkinter as tk
+import tkinter.ttk as ttk
+from tkinter import filedialog
+from tkinter import messagebox
+import json
+import os
+import shutil
+
+# Main application
+class TicketApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("Ticket System")
+        window_width, window_height = 600, 400
+        center_x = int(self.winfo_screenwidth()/2 - window_width/2)
+        center_y = int(self.winfo_screenheight()/2 - window_height/2)
+        self.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
+
+        # Data storage
+        self.tickets = []
+        self.ticket_counter = 1
+        self.current_ticket = None
+        self.load_existing_tickets()
+
+        # Frame container
+        container = tk.Frame(self)
+        container.pack(fill="both", expand=True)
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
+
+        self.frames = {}
+
+        # Only embed frames that should stay inside main window
+        for F in (MainMenu, CreateTicket):
+            frame = F(container, self)
+            self.frames[F] = frame
+            frame.grid(row=0, column=0, sticky="nsew")
+
+        self.show_frame(MainMenu)
+
+    def show_frame(self, page):
+        frame = self.frames[page]
+        frame.tkraise()
+
+    # --- Persistence ---
+    def save_tickets(self):
+        with open("tickets.json", "w") as file:
+            json.dump(self.tickets, file, indent=4)
+
+    def load_existing_tickets(self):
+        if os.path.exists("tickets.json"):
+            try:
+                with open("tickets.json", "r") as file:
+                    self.tickets = json.load(file)
+                if self.tickets:
+                    self.ticket_counter = max(t["ticket_id"] for t in self.tickets) + 1
+            except json.JSONDecodeError:
+                self.tickets = []
+                self.ticket_counter = 1
+        else:
+            self.tickets = []
+            with open("tickets.json", "w") as file:
+                json.dump(self.tickets, file)
+
+    # --- Ticket Logic ---
+    def create_ticket(self, data):
+        new_ticket = {
+            "ticket_id": self.ticket_counter,
+            "date_logged": data.get("date", ""),
+            "time_logged": data.get("time", ""),
+            "customer_name": data.get("customer_name", ""),
+            "department": data.get("department", ""),
+            "contact": data.get("contact", ""),
+            "priority": data.get("priority", ""),
+            "issue_category": data.get("issue_category", ""),
+            "device_type": data.get("device_type", ""),
+            "operating_system": data.get("operating_system", ""),
+            "description": data.get("description", ""),
+            "skill_level": data.get("skill_level", ""),
+            "initial_diagnosis": data.get("diagnosis", ""),
+            "investigation_steps": [],
+            "actions_taken": [],
+            "communication_log": [],
+            "evidence_table": [],
+            "performance_data": {},
+            "status": "Open"
+        }
+        self.tickets.append(new_ticket)
+        self.ticket_counter += 1
+        self.save_tickets()
+
+class MainMenu(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        center_frame = tk.Frame(self)
+        center_frame.place(relx=0.5, rely=0.5, anchor="center")
+
+        tk.Label(center_frame, text="Main Menu").pack(pady=10)
+        tk.Button(center_frame, text="Create Ticket",
+                  command=lambda: controller.show_frame(CreateTicket)).pack(fill="x", pady=2)
+        tk.Button(center_frame, text="Load Existing Tickets",
+                  command=lambda: LoadExistingTickets(controller)).pack(fill="x", pady=2)
+        tk.Button(center_frame, text="Add Investigation",
+                  command=lambda: AddInvestigation(controller)).pack(fill="x", pady=2)
+        tk.Button(center_frame, text="Add Resolution",
+                  command=lambda: AddResolution(controller)).pack(fill="x", pady=2)
+        tk.Button(center_frame, text="Add Communication",
+                  command=lambda: AddCommunication(controller)).pack(fill="x", pady=2)
+        tk.Button(center_frame, text="Close Tickets",
+                  command=lambda: CloseTicket(controller)).pack(fill="x", pady=2)
+        
+class CreateTicket(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+
+        center_frame = tk.Frame(self)
+        center_frame.place(relx=0.5, rely=0.5, anchor="center")
+
+        tk.Label(center_frame, text="Create Ticket", font=("Arial", 16)).grid(row=0, column=0, columnspan=2, pady=10)
+        # Input fields
+        labels = ["Date", "Time", "Customer Name", "Department", "Contact Email/Extension",
+                  "Issue Priority", "Issue Category", "Device Type and Asset Tag",
+                  "Operating System", "Description", "Initial Diagnosis", "Skill Level"]
+        self.entries = {}
+        for i, label in enumerate(labels, start=1):
+            tk.Label(center_frame, text=label).grid(row=i, column=0, sticky="e")
+            entry = tk.Entry(center_frame)
+            entry.grid(row=i, column=1)
+            self.entries[label] = entry
+
+        tk.Button(center_frame, text="Submit", command=self.submit_ticket).grid(row=13, column=0, columnspan=2, pady=10)
+        tk.Button(center_frame, text="Back", command=lambda: controller.show_frame(MainMenu)).grid(row=14, column=0, columnspan=2, pady=5)
+
+    def submit_ticket(self):
+        data = {
+            "date": self.entries["Date"].get(),
+            "time": self.entries["Time"].get(),
+            "customer_name": self.entries["Customer Name"].get(),
+            "department": self.entries["Department"].get(),
+            "contact": self.entries["Contact Email/Extension"].get(),
+            "priority": self.entries["Issue Priority"].get(),
+            "issue_category": self.entries["Issue Category"].get(),
+            "device_type": self.entries["Device Type and Asset Tag"].get(),
+            "operating_system": self.entries["Operating System"].get(),
+            "description": self.entries["Description"].get(),
+            "skill_level": self.entries["Skill Level"].get(),
+            "diagnosis": self.entries["Initial Diagnosis"].get()
+        }
+        self.controller.create_ticket(data)
+        print("Ticket Created")
+        self.controller.show_frame(MainMenu)
+
+class LoadExistingTickets(tk.Toplevel):
+    def __init__(self, controller):
+        super().__init__()
+        self.controller = controller
+        self.title("Load Existing Tickets")
+        self.geometry("900x600")
+        self.resizable(True, True)
+
+        tk.Label(self, text="Existing Tickets", font=("Arial", 16)).pack(pady=10)
+
+        columns = ("id", "customer", "department", "priority", "status")
+        self.tree = ttk.Treeview(self, columns=columns, show="headings", height=8)
+        for col, name in zip(columns, ["Ticket ID", "Customer", "Department", "Priority", "Status"]):
+            self.tree.heading(col, text=name)
+            self.tree.column(col, width=120)
+        self.tree.pack(fill="x", padx=10, pady=5)
+        self.tree.bind("<<TreeviewSelect>>", self.select_ticket)
+
+        # Details area
+        detail_frame = tk.Frame(self)
+        detail_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        canvas = tk.Canvas(detail_frame)
+        scrollbar = tk.Scrollbar(detail_frame, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        self.details_inner = tk.Frame(canvas)
+        canvas.create_window((0, 0), window=self.details_inner, anchor="nw")
+        self.details_inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        tk.Button(self, text="Close", command=self.destroy).pack(pady=5)
+
+        self.load_tickets()
+
+    def load_tickets(self):
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        for ticket in self.controller.tickets:
+            self.tree.insert("", "end", values=(
+                ticket["ticket_id"], ticket["customer_name"], ticket["department"],
+                ticket["priority"], ticket["status"]
+            ))
+
+    def select_ticket(self, event):
+        selected = self.tree.focus()
+        if not selected:
+            return
+        values = self.tree.item(selected, "values")
+        ticket_id = int(values[0])
+        ticket = next((t for t in self.controller.tickets if t["ticket_id"] == ticket_id), None)
+        if not ticket:
+            return
+        self.controller.current_ticket = ticket
+
+        # Clear previous details
+        for widget in self.details_inner.winfo_children():
+            widget.destroy()
+
+        # Display full ticket info
+        tk.Label(self.details_inner, text=f"Ticket ID: {ticket['ticket_id']}", font=("Arial", 12, "bold")).pack(anchor="w")
+        for key in ["date_logged", "time_logged", "customer_name", "department", "contact",
+                    "priority", "issue_category", "device_type", "operating_system",
+                    "skill_level", "description", "initial_diagnosis"]:
+            tk.Label(self.details_inner, text=f"{key.replace('_',' ').title()}: {ticket[key]}").pack(anchor="w")
+
+class AddInvestigation(tk.Toplevel):
+    def __init__(self, controller):
+        super().__init__()
+        self.controller = controller
+        self.title("Add Investigation")
+        self.geometry("700x650")
+        self.resizable(True, True)
+
+        tk.Label(self, text="Add Investigation Step", font=("Arial", 16)).pack(pady=10)
+
+        # Ticket selection
+        tk.Label(self, text="Select Ticket:").pack(anchor="w", padx=10)
+        ticket_ids = [f"{t['ticket_id']}: {t['customer_name']}" for t in self.controller.tickets]
+        self.ticket_var = tk.StringVar()
+        if ticket_ids:
+            self.ticket_var.set(ticket_ids[0])
+        self.ticket_dropdown = tk.OptionMenu(self, self.ticket_var, *ticket_ids)
+        self.ticket_dropdown.pack(fill="x", padx=10, pady=5)
+
+        # Investigation Step Inputs
+        tk.Label(self, text="Step Description:").pack(anchor="w", padx=10)
+        self.step_entry = tk.Entry(self)
+        self.step_entry.pack(fill="x", padx=10, pady=5)
+
+        tk.Label(self, text="Tool Used:").pack(anchor="w", padx=10)
+        self.tool_entry = tk.Entry(self)
+        self.tool_entry.pack(fill="x", padx=10, pady=5)
+
+        self.screenshot_var = tk.StringVar()
+        tk.Button(self, text="Select Screenshot", command=self.select_screenshot).pack(anchor="w", padx=10, pady=5)
+        self.screenshot_label = tk.Label(self, text="No screenshot selected")
+        self.screenshot_label.pack(anchor="w", padx=10, pady=2)
+
+        # Buttons
+        tk.Button(self, text="Add Step", command=self.add_step).pack(pady=5)
+        tk.Button(self, text="Save Investigation", command=self.save_investigation).pack(pady=5)
+        tk.Button(self, text="Remove Selected Step", command=self.remove_step).pack(pady=5)
+
+        # List of steps for selected ticket
+        tk.Label(self, text="Current Steps:").pack(anchor="w", padx=10, pady=5)
+        self.steps_listbox = tk.Listbox(self)
+        self.steps_listbox.pack(fill="both", expand=True, padx=10, pady=5)
+
+        tk.Button(self, text="Close", command=self.destroy).pack(pady=5)
+
+        # Load steps if ticket is selected
+        self.load_steps()
+        self.ticket_var.trace("w", lambda *args: self.load_steps())  # update listbox when ticket changes
+
+    def select_screenshot(self):
+        file_path = filedialog.askopenfilename(title="Select Screenshot",
+                                               filetypes=[("Image Files", "*.png *.jpg *.jpeg *.gif")])
+        if file_path:
+            self.screenshot_var.set(file_path)
+            self.screenshot_label.config(text=os.path.basename(file_path))
+
+    def get_selected_ticket(self):
+        ticket_id = int(self.ticket_var.get().split(":")[0])
+        return next(t for t in self.controller.tickets if t["ticket_id"] == ticket_id)
+
+    def load_steps(self):
+        self.steps_listbox.delete(0, tk.END)
+        ticket = self.get_selected_ticket()
+        for idx, step in enumerate(ticket.get("investigation_steps", []), start=1):
+            screenshot_name = os.path.basename(step.get("screenshot_path", ""))
+            self.steps_listbox.insert(tk.END,
+                f"{idx}. {step['description']} (Tool: {step['tool']}, Screenshot: {screenshot_name})")
+
+    def add_step(self):
+        ticket = self.get_selected_ticket()
+        step_data = {
+            "description": self.step_entry.get(),
+            "tool": self.tool_entry.get(),
+            "screenshot_path": None
+        }
+
+        # Copy the screenshot if selected
+        if self.screenshot_var.get():
+            dest_dir = "investigation_screenshots"
+            os.makedirs(dest_dir, exist_ok=True)
+            src = self.screenshot_var.get()
+            filename = f"{ticket['ticket_id']}_{os.path.basename(src)}"
+            dest = os.path.join(dest_dir, filename)
+            shutil.copy(src, dest)
+            step_data["screenshot_path"] = dest
+
+        if "investigation_steps" not in ticket:
+            ticket["investigation_steps"] = []
+
+        ticket["investigation_steps"].append(step_data)
+        self.controller.save_tickets()
+        self.load_steps()
+
+        # Clear inputs
+        self.step_entry.delete(0, tk.END)
+        self.tool_entry.delete(0, tk.END)
+        self.screenshot_var.set("")
+        self.screenshot_label.config(text="No screenshot selected")
+
+    def remove_step(self):
+        ticket = self.get_selected_ticket()
+        selected = self.steps_listbox.curselection()
+        if selected:
+            idx = selected[0]
+            # Optionally delete the screenshot file
+            screenshot_path = ticket["investigation_steps"][idx].get("screenshot_path")
+            if screenshot_path and os.path.exists(screenshot_path):
+                os.remove(screenshot_path)
+            ticket["investigation_steps"].pop(idx)
+            self.controller.save_tickets()
+            self.load_steps()
+
+    def save_investigation(self):
+        ticket = self.get_selected_ticket()
+        self.controller.save_tickets()
+        messagebox.showinfo("Saved", f"Investigation steps saved for Ticket {ticket['ticket_id']}")
+
+class AddResolution(tk.Toplevel):
+    def __init__(self, controller):
+        super().__init__()
+        self.controller = controller
+        self.title("Add Resolution")
+        self.geometry("700x700")
+        self.resizable(True, True)
+
+        tk.Label(self, text="Add Resolution", font=("Arial", 16)).pack(pady=10)
+
+        # Ticket selection
+        tk.Label(self, text="Select Ticket:").pack(anchor="w", padx=10)
+        ticket_ids = [f"{t['ticket_id']}: {t['customer_name']}" for t in self.controller.tickets]
+        self.ticket_var = tk.StringVar()
+        if ticket_ids:
+            self.ticket_var.set(ticket_ids[0])
+        self.ticket_dropdown = tk.OptionMenu(self, self.ticket_var, *ticket_ids)
+        self.ticket_dropdown.pack(fill="x", padx=10, pady=5)
+
+        # Actions Taken
+        tk.Label(self, text="Actions Taken:").pack(anchor="w", padx=10, pady=5)
+        self.action_vars = {}
+        actions = [
+            "Updated OS",
+            "Freed Disk Space",
+            "Removed Apps",
+            "Added RAM",
+            "Reset Time Service",
+            "Clean Install",
+            "External Storage Added"
+        ]
+        for action in actions:
+            var = tk.BooleanVar()
+            tk.Checkbutton(self, text=action, variable=var).pack(anchor="w", padx=20)
+            self.action_vars[action] = var
+
+        # Detailed Explanation
+        tk.Label(self, text="Detailed Explanation of Fix:").pack(anchor="w", padx=10, pady=5)
+        self.explanation_text = tk.Text(self, height=5)
+        self.explanation_text.pack(fill="x", padx=10, pady=5)
+
+        # Performance Comparison
+        tk.Label(self, text="Before & After Performance Comparison:", font=("Arial", 12, "bold")).pack(anchor="w", padx=10, pady=5)
+        perf_frame = tk.Frame(self)
+        perf_frame.pack(fill="x", padx=10, pady=5)
+
+        tk.Label(perf_frame, text="Performance Area").grid(row=0, column=0, padx=5)
+        tk.Label(perf_frame, text="Before").grid(row=0, column=1, padx=5)
+        tk.Label(perf_frame, text="After").grid(row=0, column=2, padx=5)
+
+        self.perf_vars = {}
+        areas = ["CPU Usage (%)", "Disk Space (GB Free)", "RAM Usage (%)"]
+        for i, area in enumerate(areas, start=1):
+            tk.Label(perf_frame, text=area).grid(row=i, column=0, sticky="w", padx=5, pady=2)
+            before_var = tk.StringVar()
+            after_var = tk.StringVar()
+            tk.Entry(perf_frame, textvariable=before_var, width=10).grid(row=i, column=1, padx=5)
+            tk.Entry(perf_frame, textvariable=after_var, width=10).grid(row=i, column=2, padx=5)
+            self.perf_vars[area] = {"before": before_var, "after": after_var}
+
+        # Buttons
+        tk.Button(self, text="Save Resolution", command=self.save_resolution).pack(pady=10)
+        tk.Button(self, text="Close", command=self.destroy).pack(pady=5)
+
+        self.load_resolution()
+
+        self.ticket_var.trace("w", lambda *args: self.load_resolution())  # reload when ticket changes
+
+    def get_selected_ticket(self):
+        ticket_id = int(self.ticket_var.get().split(":")[0])
+        return next(t for t in self.controller.tickets if t["ticket_id"] == ticket_id)
+
+    def load_resolution(self):
+        ticket = self.get_selected_ticket()
+        actions = ticket.get("actions_taken", {})
+        for action, var in self.action_vars.items():
+            var.set(actions.get(action, False))
+
+        self.explanation_text.delete("1.0", tk.END)
+        self.explanation_text.insert(tk.END, ticket.get("resolution_explanation", ""))
+
+        perf_data = ticket.get("performance_data", {})
+        for area, vals in self.perf_vars.items():
+            vals["before"].set(perf_data.get(area, {}).get("before", ""))
+            vals["after"].set(perf_data.get(area, {}).get("after", ""))
+
+    def save_resolution(self):
+        ticket = self.get_selected_ticket()
+        ticket["actions_taken"] = {action: var.get() for action, var in self.action_vars.items()}
+        ticket["resolution_explanation"] = self.explanation_text.get("1.0", tk.END).strip()
+        ticket["performance_data"] = {area: {"before": vals["before"].get(), "after": vals["after"].get()} for area, vals in self.perf_vars.items()}
+        self.controller.save_tickets()
+        tk.messagebox.showinfo("Saved", f"Resolution saved for Ticket {ticket['ticket_id']}")
+
+class AddCommunication(tk.Toplevel):
+    def __init__(self, controller):
+        super().__init__()
+
+        self.controller = controller
+        self.title("Add Communication")
+        self.geometry("700x650")
+        self.resizable(True, True)
+
+        tk.Label(self, text="Add Communication Entry", font=("Arial", 16)).pack(pady=10)
+
+        # Ticket selection dropdown
+        tk.Label(self, text="Select Ticket:").pack(anchor="w", padx=10)
+        ticket_ids = [f"{t['ticket_id']}: {t['customer_name']}" for t in self.controller.tickets]
+        self.ticket_var = tk.StringVar()
+        if ticket_ids:
+            self.ticket_var.set(ticket_ids[0])
+        self.ticket_dropdown = tk.OptionMenu(self, self.ticket_var, *ticket_ids)
+        self.ticket_dropdown.pack(fill="x", padx=10, pady=5)
+
+        # Communication input fields
+        tk.Label(self, text="Date:").pack(anchor="w", padx=10)
+        self.date_entry = tk.Entry(self)
+        self.date_entry.pack(fill="x", padx=10, pady=5)
+
+        tk.Label(self, text="Method (Email/Phone/In-person):").pack(anchor="w", padx=10)
+        self.method_entry = tk.Entry(self)
+        self.method_entry.pack(fill="x", padx=10, pady=5)
+
+        tk.Label(self, text="Summary of Interaction:").pack(anchor="w", padx=10)
+        self.summary_text = tk.Text(self, height=5)
+        self.summary_text.pack(fill="both", padx=10, pady=5)
+
+        # Buttons
+        tk.Button(self, text="Add Entry", command=self.add_entry).pack(pady=5)
+        tk.Button(self, text="Remove Selected Entry", command=self.remove_entry).pack(pady=5)
+
+        tk.Label(self, text="Current Communication Log:").pack(anchor="w", padx=10, pady=5)
+        self.log_listbox = tk.Listbox(self)
+        self.log_listbox.pack(fill="both", expand=True, padx=10, pady=5)
+
+        tk.Button(self, text="Close", command=self.destroy).pack(pady=5)
+
+        # Load existing log
+        self.load_log()
+        self.ticket_var.trace("w", lambda *args: self.load_log())  # update when ticket changes
+
+    def get_selected_ticket(self):
+        ticket_id = int(self.ticket_var.get().split(":")[0])
+        return next(t for t in self.controller.tickets if t["ticket_id"] == ticket_id)
+
+    def load_log(self):
+        self.log_listbox.delete(0, tk.END)
+        ticket = self.get_selected_ticket()
+        for idx, entry in enumerate(ticket.get("communication_log", []), start=1):
+            display = f"{idx}. Date: {entry['date']}, Method: {entry['method']}, Summary: {entry['summary'][:30]}..."
+            self.log_listbox.insert(tk.END, display)
+
+    def add_entry(self):
+        ticket = self.get_selected_ticket()
+        entry = {
+            "date": self.date_entry.get(),
+            "method": self.method_entry.get(),
+            "summary": self.summary_text.get("1.0", tk.END).strip()
+        }
+        if "communication_log" not in ticket:
+            ticket["communication_log"] = []
+        ticket["communication_log"].append(entry)
+        self.controller.save_tickets()
+        self.load_log()
+        # Clear fields
+        self.date_entry.delete(0, tk.END)
+        self.method_entry.delete(0, tk.END)
+        self.summary_text.delete("1.0", tk.END)
+
+    def remove_entry(self):
+        ticket = self.get_selected_ticket()
+        selected = self.log_listbox.curselection()
+        if selected:
+            idx = selected[0]
+            ticket["communication_log"].pop(idx)
+            self.controller.save_tickets()
+            self.load_log()
+
+class CloseTicket(tk.Toplevel):
+    def __init__(self, controller):
+        super().__init__()
+
+        self.controller = controller
+        self.title("Close Ticket / Manage Tickets")
+        self.geometry("800x600")
+        self.resizable(True, True)
+
+        tk.Label(self, text="Close Ticket / Manage Tickets", font=("Arial", 16)).pack(pady=10)
+
+        # --- Open Tickets Section ---
+        tk.Label(self, text="Open Tickets:").pack(anchor="w", padx=10)
+        self.open_ticket_var = tk.StringVar()
+
+        # Placeholder in case no open tickets exist
+        initial_open = "No open tickets"
+        self.open_ticket_var.set(initial_open)
+        self.open_ticket_dropdown = tk.OptionMenu(self, self.open_ticket_var, initial_open)
+        self.open_ticket_dropdown.pack(fill="x", padx=10, pady=5)
+
+        tk.Label(self, text="Final Resolution / Notes:").pack(anchor="w", padx=10)
+        self.resolution_text = tk.Text(self, height=6)
+        self.resolution_text.pack(fill="both", padx=10, pady=5)
+
+        tk.Label(self, text="Performance Notes:").pack(anchor="w", padx=10)
+        self.performance_text = tk.Text(self, height=4)
+        self.performance_text.pack(fill="both", padx=10, pady=5)
+
+        tk.Button(self, text="Close Ticket", command=self.close_ticket).pack(pady=5)
+
+        # --- Closed Tickets Section ---
+        tk.Label(self, text="Closed Tickets:").pack(anchor="w", padx=10, pady=10)
+        self.closed_listbox = tk.Listbox(self)
+        self.closed_listbox.pack(fill="both", expand=True, padx=10, pady=5)
+
+        tk.Button(self, text="Delete Selected Closed Ticket", command=self.delete_ticket).pack(pady=5)
+        tk.Button(self, text="Close Window", command=self.destroy).pack(pady=5)
+
+        # Populate lists
+        self.update_closed_list()
+        self.refresh_open_dropdown()
+
+        # Load first open ticket if available
+        self.open_ticket_var.trace("w", lambda *args: self.load_open_ticket_details())
+        self.load_open_ticket_details()
+
+    # Get currently selected open ticket
+    def get_selected_open_ticket(self):
+        value = self.open_ticket_var.get()
+        if not value or "No open tickets" in value:
+            return None
+        ticket_id = int(value.split(":")[0])
+        return next((t for t in self.controller.tickets if t["ticket_id"] == ticket_id), None)
+
+    # Load open ticket details into text fields
+    def load_open_ticket_details(self):
+        ticket = self.get_selected_open_ticket()
+        self.resolution_text.delete("1.0", tk.END)
+        self.performance_text.delete("1.0", tk.END)
+        if ticket:
+            self.resolution_text.insert(tk.END, ticket.get("final_resolution", ""))
+            self.performance_text.insert(tk.END, ticket.get("performance_notes", ""))
+
+    # Close ticket and update status
+    def close_ticket(self):
+        ticket = self.get_selected_open_ticket()
+        if not ticket:
+            tk.messagebox.showwarning("No Ticket", "No open ticket selected to close.")
+            return
+        ticket["status"] = "Closed"
+        ticket["final_resolution"] = self.resolution_text.get("1.0", tk.END).strip()
+        ticket["performance_notes"] = self.performance_text.get("1.0", tk.END).strip()
+        self.controller.save_tickets()
+        self.update_closed_list()
+        self.refresh_open_dropdown()
+        tk.messagebox.showinfo("Ticket Closed", f"Ticket {ticket['ticket_id']} has been closed.")
+
+    # Populate closed tickets listbox
+    def update_closed_list(self):
+        self.closed_listbox.delete(0, tk.END)
+        for ticket in self.controller.tickets:
+            if ticket['status'] == "Closed":
+                self.closed_listbox.insert(tk.END, f"{ticket['ticket_id']}: {ticket['customer_name']}")
+
+    # Refresh open tickets dropdown safely
+    def refresh_open_dropdown(self):
+        open_ticket_ids = [f"{t['ticket_id']}: {t['customer_name']} (Status: {t['status']})"
+                           for t in self.controller.tickets if t['status'] != "Closed"]
+        menu = self.open_ticket_dropdown["menu"]
+        menu.delete(0, "end")
+        if open_ticket_ids:
+            for t in open_ticket_ids:
+                menu.add_command(label=t, command=lambda value=t: self.open_ticket_var.set(value))
+            self.open_ticket_var.set(open_ticket_ids[0])
+        else:
+            placeholder = "No open tickets"
+            menu.add_command(label=placeholder, command=lambda: self.open_ticket_var.set(placeholder))
+            self.open_ticket_var.set(placeholder)
+
+    # Delete selected closed ticket
+    def delete_ticket(self):
+        selection = self.closed_listbox.curselection()
+        if not selection:
+            return
+        idx = selection[0]
+        ticket_text = self.closed_listbox.get(idx)
+        ticket_id = int(ticket_text.split(":")[0])
+        # Remove ticket from controller
+        self.controller.tickets = [t for t in self.controller.tickets if t['ticket_id'] != ticket_id]
+        self.controller.save_tickets()
+        self.update_closed_list()
+        tk.messagebox.showinfo("Deleted", f"Ticket {ticket_id} has been deleted.")
+                
+if __name__ == "__main__":
+    app = TicketApp()
+    app.mainloop()
