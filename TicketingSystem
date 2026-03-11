@@ -2,6 +2,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import filedialog
 from tkinter import messagebox
+from openpyxl import Workbook
 import json
 import os
 import shutil
@@ -62,6 +63,42 @@ class TicketApp(tk.Tk):
             self.tickets = []
             with open("tickets.json", "w") as file:
                 json.dump(self.tickets, file)
+            
+    
+
+    def export_to_excel(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Tickets"
+
+    # Headers
+        ws.append([
+        "Ticket ID",
+        "Customer Name",
+        "Department",
+        "Priority",
+        "Category",
+        "Device",
+        "Operating System",
+        "Description",
+        "Status"
+        ])
+
+    # Ticket data
+        for ticket in self.tickets:
+            ws.append([
+            ticket.get("ticket_id"),
+            ticket.get("customer_name"),
+            ticket.get("department"),
+            ticket.get("priority"),
+            ticket.get("issue_category"),
+            ticket.get("device_type"),
+            ticket.get("operating_system"),
+            ticket.get("description"),
+            ticket.get("status", "Open")
+        ])
+
+        wb.save("tickets_export.xlsx")
 
     # --- Ticket Logic ---
     def create_ticket(self, data):
@@ -110,6 +147,9 @@ class MainMenu(tk.Frame):
                   command=lambda: AddCommunication(controller)).pack(fill="x", pady=2)
         tk.Button(center_frame, text="Close Tickets",
                   command=lambda: CloseTicket(controller)).pack(fill="x", pady=2)
+        tk.Button(self,
+          text="Export Tickets to Excel",
+          command=controller.export_to_excel).pack(pady=5)
         
 class CreateTicket(tk.Frame):
     def __init__(self, parent, controller):
@@ -149,9 +189,28 @@ class CreateTicket(tk.Frame):
             "skill_level": self.entries["Skill Level"].get(),
             "diagnosis": self.entries["Initial Diagnosis"].get()
         }
-        self.controller.create_ticket(data)
-        print("Ticket Created")
         self.controller.show_frame(MainMenu)
+        
+        customer_name = self.entries["Customer Name"].get()
+        department = self.entries["Department"].get()
+        priority = self.entries["Issue Priority"].get()
+        
+        # Validation
+        if customer_name == "":
+            messagebox.showerror("Input Error", "Customer Name is required")
+            return
+
+        if department == "":
+            messagebox.showerror("Input Error", "Department is required")
+            return
+
+        if priority not in ["Low", "Medium", "High", "Critical"]:
+            messagebox.showerror("Input Error", "Priority must be Low, Medium, High, or Critical")
+            return
+        
+        # If validation passes, create ticket
+        data = {label.lower().replace(" ", "_"): entry.get() for label, entry in self.entries.items()}
+        self.controller.create_ticket(data)
 
 class LoadExistingTickets(tk.Toplevel):
     def __init__(self, controller):
@@ -284,7 +343,12 @@ class AddInvestigation(tk.Toplevel):
         self.steps_listbox.delete(0, tk.END)
         ticket = self.get_selected_ticket()
         for idx, step in enumerate(ticket.get("investigation_steps", []), start=1):
-            screenshot_name = os.path.basename(step.get("screenshot_path", ""))
+            screenshot_path = step.get("screenshot_path")
+
+        if screenshot_path:
+            screenshot_name = os.path.basename(screenshot_path)
+        else:
+            screenshot_name = "None"
             self.steps_listbox.insert(tk.END,
                 f"{idx}. {step['description']} (Tool: {step['tool']}, Screenshot: {screenshot_name})")
 
@@ -334,8 +398,17 @@ class AddInvestigation(tk.Toplevel):
 
     def save_investigation(self):
         ticket = self.get_selected_ticket()
+
+        if not self.ticket_var.get():
+            messagebox.showerror("Error", "Please select a ticket")
+            return
+
+        if "investigation_steps" not in ticket or len(ticket["investigation_steps"]) == 0:
+            messagebox.showerror("Error", "You must add at least one investigation step")
+            return
+
         self.controller.save_tickets()
-        messagebox.showinfo("Saved", f"Investigation steps saved for Ticket {ticket['ticket_id']}")
+        messagebox.showinfo("Saved", "Investigation saved successfully")
 
 class AddResolution(tk.Toplevel):
     def __init__(self, controller):
